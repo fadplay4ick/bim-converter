@@ -31,6 +31,8 @@ async def convert_file(file: UploadFile = File(None), request: Request = None):
                     if name.endswith(".bcf") or name.endswith(".xml"):
                         parts.append(f"== {name} ==\n{z.read(name).decode('utf-8', errors='ignore')}")
                 text = "\n\n".join(parts)
+                text = text.encode('utf-8', errors='ignore').decode('utf-8')
+                text = text.replace('\x00', '')
         except Exception as e:
             text = f"Error reading bcfzip: {str(e)}"
     else:
