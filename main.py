@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.responses import JSONResponse
 import zipfile
 import io
+import re
 
 app = FastAPI()
 
@@ -9,33 +10,37 @@ app = FastAPI()
 async def root():
     return {"status": "ok"}
 
+def clean_text(text):
+    text = text.encode('utf-8', errors='ignore').decode('utf-8')
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+    text = re.sub(r'\\u[0-9a-fA-F]{4}', '', text)
+    return text
+
 @app.post("/convert")
 async def convert_file(file: UploadFile = File(None), request: Request = None):
     if file is None:
-        body = await request.body()
-        content = body
+        content = await request.body()
         filename = "file.txt"
     else:
         content = await file.read()
         filename = file.filename or "file.txt"
-    
+
     text = ""
 
     if filename.endswith(".ifc"):
-        text = content.decode("utf-8", errors="ignore")
+        text = clean_text(content.decode("utf-8", errors="ignore"))
     elif filename.endswith(".bcfzip"):
         try:
             with zipfile.ZipFile(io.BytesIO(content)) as z:
                 parts = []
                 for name in z.namelist():
                     if name.endswith(".bcf") or name.endswith(".xml"):
-                        parts.append(f"== {name} ==\n{z.read(name).decode('utf-8', errors='ignore')}")
+                        raw = z.read(name).decode("utf-8", errors="ignore")
+                        parts.append(f"== {name} ==\n{clean_text(raw)}")
                 text = "\n\n".join(parts)
-                text = text.encode('utf-8', errors='ignore').decode('utf-8')
-                text = text.replace('\x00', '')
         except Exception as e:
-            text = f"Error reading bcfzip: {str(e)}"
+            text = f"Error: {str(e)}"
     else:
-        text = content.decode("utf-8", errors="ignore")
+        text = clean_text(content.decode("utf-8", errors="ignore"))
 
     return JSONResponse({"text": text, "fileName": filename})
